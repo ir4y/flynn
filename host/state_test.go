@@ -15,5 +15,3 @@ func TestStateHostID(t *testing.T) {
 		t.Errorf("expected job.HostID to equal %s, got %s", hostID, job.HostID)
 	}
 }
-
-// TODO: need a test that can see if errors from serialization!  the happy path serialization code is currently "covered" but unexercised.

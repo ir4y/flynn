@@ -71,8 +71,7 @@ func (s *State) persist() {
 	// open/initialize db
 	db, err := bolt.Open(stateFile, 0600, &bolt.Options{Timeout: 5 * time.Second})
 	if err != nil {
-		return // TODO: error handling:  return?  panic?  obviously callers of these setter functions don't wanna see this, is the system hosed enough to panic if this goes wrong?
-		// fmt.Errorf("could not open db: %s", err)
+		panic(fmt.Errorf("could not open db: %s", err))
 	}
 
 	s.mtx.RLock()
@@ -106,7 +105,7 @@ func (s *State) persist() {
 		}
 		return nil
 	}); err != nil {
-		return // TODO: fmt.Errorf("could not persist to boltdb: %s", err)
+		panic(fmt.Errorf("could not persist to boltdb: %s", err))
 	}
 }
 
