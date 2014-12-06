@@ -32,5 +32,5 @@ type Backend interface {
 }
 
 type StateSaver interface {
-	SaveState(*json.Encoder) error
+	Serialize() ([]byte, error)
 }

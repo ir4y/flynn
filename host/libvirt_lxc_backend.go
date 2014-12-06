@@ -891,10 +891,10 @@ func (l *LibvirtLXCBackend) RestoreState(jobs map[string]*host.ActiveJob, dec *j
 	return nil
 }
 
-func (l *LibvirtLXCBackend) SaveState(e *json.Encoder) error {
+func (l *LibvirtLXCBackend) Serialize() ([]byte, error) {
 	l.containersMtx.RLock()
 	defer l.containersMtx.RUnlock()
-	return e.Encode(l.containers)
+	return json.Marshal(l.containers)
 }
 
 func (l *LibvirtLXCBackend) pinkertonPull(url string) ([]pinkerton.LayerPullInfo, error) {

@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/flynn/flynn/Godeps/_workspace/src/github.com/boltdb/bolt"
 	"github.com/flynn/flynn/host/types"
 )
 
@@ -66,25 +67,46 @@ func (s *State) Restore(file string, backend Backend) error {
 func (s *State) persist() {
 	s.stateFileMtx.Lock()
 	defer s.stateFileMtx.Unlock()
-	if _, err := s.stateFile.Seek(0, 0); err != nil {
-		// log error
-		return
+
+	// open/initialize db
+	db, err := bolt.Open(stateFile, 0600, &bolt.Options{Timeout: 5 * time.Second})
+	if err != nil {
+		return // TODO: error handling:  return?  panic?  obviously callers of these setter functions don't wanna see this, is the system hosed enough to panic if this goes wrong?
+		// fmt.Errorf("could not open db: %s", err)
 	}
+
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
-	enc := json.NewEncoder(s.stateFile)
-	if err := enc.Encode(s.jobs); err != nil {
-		// log error
-		return
-	}
-	if b, ok := s.backend.(StateSaver); ok {
-		if err := b.SaveState(enc); err != nil {
-			// log error
-			return
+
+	if err := db.Update(func(tx *bolt.Tx) error {
+		// idempotently create buckets.  (errors ignored because they're all compile-time impossible args checks.)
+		// TODO: do these once in init as well, getting a bucket ref back is free
+		jobsBucket, _ := tx.CreateBucketIfNotExists([]byte("jobs"))
+		backendBucket, _ := tx.CreateBucketIfNotExists([]byte("backend"))
+
+		// serialize each job, push into jobs bucket
+		for jobName, job := range s.jobs {
+			b, err := json.Marshal(job)
+			err = jobsBucket.Put([]byte(jobName), b)
+			if err != nil {
+				return fmt.Errorf("could not persist job to boltdb: %s", err)
+			}
 		}
-	}
-	if err := s.stateFile.Sync(); err != nil {
-		// log error
+
+		// save the opaque blob the backend handed us as its state
+		if b, ok := s.backend.(StateSaver); ok {
+			if bytes, err := b.Serialize(); err != nil {
+				return fmt.Errorf("error serializing backend state: %s", err)
+			} else {
+				err := backendBucket.Put([]byte("backend"), bytes)
+				if err != nil {
+					return fmt.Errorf("could not persist backend state to boltdb: %s", err)
+				}
+			}
+		}
+		return nil
+	}); err != nil {
+		return // TODO: fmt.Errorf("could not persist to boltdb: %s", err)
 	}
 }
 
