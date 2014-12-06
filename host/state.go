@@ -76,6 +76,10 @@ func (s *State) Restore(file string, backend Backend) error {
 }
 
 func (s *State) initializePersistence() {
+	if s.stateDb != nil {
+		return
+	}
+
 	s.stateFileMtx.Lock()
 	defer s.stateFileMtx.Unlock()
 
