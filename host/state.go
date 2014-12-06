@@ -30,21 +30,25 @@ type State struct {
 	backend Backend
 }
 
-func NewState(id string) *State {
+func NewState(id string, stateFilePath string) *State {
 	return &State{
-		id:         id,
-		jobs:       make(map[string]*host.ActiveJob),
-		containers: make(map[string]*host.ActiveJob),
-		listeners:  make(map[string]map[chan host.Event]struct{}),
-		attachers:  make(map[string]map[chan struct{}]struct{}),
+		id:            id,
+		stateFilePath: stateFilePath,
+		jobs:          make(map[string]*host.ActiveJob),
+		containers:    make(map[string]*host.ActiveJob),
+		listeners:     make(map[string]map[chan host.Event]struct{}),
+		attachers:     make(map[string]map[chan struct{}]struct{}),
 	}
 }
 
-func (s *State) Restore(file string, backend Backend) error {
+/*
+	Restore prior state from the save location defined at construction time.
+	If the state save file is empty, nothing is loaded, and no error is returned.
+*/
+func (s *State) Restore(backend Backend) error {
 	s.stateFileMtx.Lock()
 	defer s.stateFileMtx.Unlock()
 	s.backend = backend
-	s.stateFilePath = file
 	s.initializePersistence()
 
 	if err := s.stateDb.View(func(tx *bolt.Tx) error {
