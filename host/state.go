@@ -3,8 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io"
-	"os"
 	"sync"
 	"time"
 
@@ -25,9 +23,11 @@ type State struct {
 	listenMtx  sync.RWMutex
 	attachers  map[string]map[chan struct{}]struct{}
 
-	stateFileMtx sync.Mutex
-	stateFile    *os.File
-	backend      Backend
+	stateFileMtx  sync.Mutex
+	stateFilePath string
+	stateDb       *bolt.DB
+
+	backend Backend
 }
 
 func NewState(id string) *State {
@@ -43,45 +43,69 @@ func NewState(id string) *State {
 func (s *State) Restore(file string, backend Backend) error {
 	s.stateFileMtx.Lock()
 	defer s.stateFileMtx.Unlock()
-	f, err := os.OpenFile(file, os.O_RDWR|os.O_CREATE, 0666)
-	if err != nil {
-		return err
-	}
-	s.stateFile = f
 	s.backend = backend
-	d := json.NewDecoder(f)
-	if err := d.Decode(&s.jobs); err != nil {
-		if err == io.EOF {
-			err = nil
+	s.stateFilePath = file
+	s.initializePersistence()
+
+	if err := s.stateDb.View(func(tx *bolt.Tx) error {
+		jobsBucket := tx.Bucket([]byte("jobs"))
+		backendBucket := tx.Bucket([]byte("backend"))
+
+		// restore jobs
+		if err := jobsBucket.ForEach(func(k, v []byte) error {
+			job := &host.ActiveJob{}
+			if err := json.Unmarshal(v, job); err != nil {
+				return err
+			}
+			if job.ContainerID != "" {
+				s.containers[job.ContainerID] = job
+			}
+			s.jobs[string(k)] = job
+			return nil
+		}); err != nil {
+			return err
 		}
-		return err
+
+		// hand opaque blob back to backend so it can do its restore
+		backendBlob := backendBucket.Get([]byte("backend"))
+		return backend.RestoreState(s.jobs, backendBlob)
+	}); err != nil {
+		return fmt.Errorf("could not restore from host persistence db: %s", err)
 	}
-	for _, job := range s.jobs {
-		if job.ContainerID != "" {
-			s.containers[job.ContainerID] = job
-		}
+	return nil
+}
+
+func (s *State) initializePersistence() {
+	s.stateFileMtx.Lock()
+	defer s.stateFileMtx.Unlock()
+
+	// open/initialize db
+	stateDb, err := bolt.Open(s.stateFilePath, 0600, &bolt.Options{Timeout: 5 * time.Second})
+	if err != nil {
+		panic(fmt.Errorf("could not open db: %s", err))
 	}
-	return backend.RestoreState(s.jobs, d)
+	s.stateDb = stateDb
+	if err := s.stateDb.Update(func(tx *bolt.Tx) error {
+		// idempotently create buckets.  (errors ignored because they're all compile-time impossible args checks.)
+		tx.CreateBucketIfNotExists([]byte("jobs"))
+		tx.CreateBucketIfNotExists([]byte("backend"))
+		return nil
+	}); err != nil {
+		panic(fmt.Errorf("could not initialize host persistence db: %s", err))
+	}
 }
 
 func (s *State) persist() {
 	s.stateFileMtx.Lock()
 	defer s.stateFileMtx.Unlock()
-
-	// open/initialize db
-	db, err := bolt.Open(stateFile, 0600, &bolt.Options{Timeout: 5 * time.Second})
-	if err != nil {
-		panic(fmt.Errorf("could not open db: %s", err))
-	}
-
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
 
-	if err := db.Update(func(tx *bolt.Tx) error {
-		// idempotently create buckets.  (errors ignored because they're all compile-time impossible args checks.)
-		// TODO: do these once in init as well, getting a bucket ref back is free
-		jobsBucket, _ := tx.CreateBucketIfNotExists([]byte("jobs"))
-		backendBucket, _ := tx.CreateBucketIfNotExists([]byte("backend"))
+	s.initializePersistence()
+
+	if err := s.stateDb.Update(func(tx *bolt.Tx) error {
+		jobsBucket := tx.Bucket([]byte("jobs"))
+		backendBucket := tx.Bucket([]byte("backend"))
 
 		// serialize each job, push into jobs bucket
 		for jobName, job := range s.jobs {

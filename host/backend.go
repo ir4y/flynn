@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"io"
 
 	"github.com/flynn/flynn/host/types"
@@ -28,7 +27,7 @@ type Backend interface {
 	ResizeTTY(id string, height, width uint16) error
 	Attach(*AttachRequest) error
 	Cleanup() error
-	RestoreState(map[string]*host.ActiveJob, *json.Decoder) error
+	RestoreState(map[string]*host.ActiveJob, []byte) error
 }
 
 type StateSaver interface {

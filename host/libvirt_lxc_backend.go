@@ -858,7 +858,8 @@ func (l *LibvirtLXCBackend) Cleanup() error {
 	return err
 }
 
-func (l *LibvirtLXCBackend) RestoreState(jobs map[string]*host.ActiveJob, dec *json.Decoder) error {
+func (l *LibvirtLXCBackend) RestoreState(jobs map[string]*host.ActiveJob, blob []byte) error {
+	dec := json.NewDecoder(bytes.NewBuffer(blob))
 	containers := make(map[string]*libvirtContainer)
 	if err := dec.Decode(&containers); err != nil {
 		return err
