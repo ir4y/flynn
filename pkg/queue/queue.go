@@ -55,14 +55,14 @@ func (q *Queue) Handle(name string, h Handler) {
 
 var ErrNoHandler = errors.New("queue: no handler registered")
 
-func (q *Queue) Work(name string) (*Worker, error) {
+func (q *Queue) Worker(name string, concurrency int) (*Worker, error) {
 	q.mtx.Lock()
 	defer q.mtx.Unlock()
 	h, ok := q.handlers[name]
 	if !ok {
 		return nil, ErrNoHandler
 	}
-	return newWorker(q, name, h), nil
+	return newWorker(q, name, h, concurrency), nil
 }
 
 const waitTimeout = 5 * time.Second
