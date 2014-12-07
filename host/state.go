@@ -23,9 +23,10 @@ type State struct {
 	listenMtx  sync.RWMutex
 	attachers  map[string]map[chan struct{}]struct{}
 
-	stateFileMtx  sync.Mutex
-	stateFilePath string
-	stateDb       *bolt.DB
+	stateFileMtx      sync.Mutex
+	stateFilePath     string
+	stateDb           *bolt.DB
+	stateSaveListener chan struct{}
 
 	backend Backend
 }
@@ -84,9 +85,6 @@ func (s *State) initializePersistence() {
 		return
 	}
 
-	s.stateFileMtx.Lock()
-	defer s.stateFileMtx.Unlock()
-
 	// open/initialize db
 	stateDb, err := bolt.Open(s.stateFilePath, 0600, &bolt.Options{Timeout: 5 * time.Second})
 	if err != nil {
@@ -139,6 +137,21 @@ func (s *State) persist() {
 	}); err != nil {
 		panic(fmt.Errorf("could not persist to boltdb: %s", err))
 	}
+
+	if s.stateSaveListener != nil {
+		s.stateSaveListener <- struct{}{}
+	}
+}
+
+/*
+	Close the DB that persists the host state.
+	This is not called in typical flow because there's no need to release this file descriptor,
+	but it is needed in testing so that bolt releases locks such that the  file can be reopened.
+*/
+func (s *State) persistenceDbClose() error {
+	s.stateFileMtx.Lock()
+	defer s.stateFileMtx.Unlock()
+	return s.stateDb.Close()
 }
 
 func (s *State) AddJob(j *host.Job, ip string) {
