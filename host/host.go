@@ -38,7 +38,7 @@ options:
   --external=IP          external IP of host
   --config=PATH          path to configuration file
   --manifest=PATH        path to manifest file [default: /etc/flynn-host.json]
-  --state=PATH           path to state file [default: /var/lib/flynn/host-state.json]
+  --state=PATH           path to state file [default: /var/lib/flynn/host-state.bolt]
   --id=ID                host id
   --force                kill all containers booted by flynn-host before starting
   --volpath=PATH         directory to create volumes in [default: /var/lib/flynn/host-volumes]
