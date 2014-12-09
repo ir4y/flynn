@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+	"io"
 	"time"
 
 	"github.com/flynn/flynn/Godeps/_workspace/src/github.com/boltdb/bolt"
@@ -75,7 +76,11 @@ func (s *State) Restore(backend Backend) error {
 		backendBlob := backendBucket.Get([]byte("backend"))
 		return backend.RestoreState(s.jobs, backendBlob)
 	}); err != nil {
-		return fmt.Errorf("could not restore from host persistence db: %s", err)
+		if err == io.EOF {
+			return nil
+		} else {
+			return fmt.Errorf("could not restore from host persistence db: %s", err)
+		}
 	}
 	return nil
 }
