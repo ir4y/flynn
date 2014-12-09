@@ -106,7 +106,7 @@ func (s *State) initializePersistence() {
 	}
 }
 
-func (s *State) persist() {
+func (s *State) persist(jobID string) {
 	s.stateFileMtx.Lock()
 	defer s.stateFileMtx.Unlock()
 	s.mtx.RLock()
@@ -118,13 +118,11 @@ func (s *State) persist() {
 		jobsBucket := tx.Bucket([]byte("jobs"))
 		backendBucket := tx.Bucket([]byte("backend"))
 
-		// serialize each job, push into jobs bucket
-		for jobName, job := range s.jobs {
-			b, err := json.Marshal(job)
-			err = jobsBucket.Put([]byte(jobName), b)
-			if err != nil {
-				return fmt.Errorf("could not persist job to boltdb: %s", err)
-			}
+		// serialize the changed job, and push it into jobs bucket
+		b, err := json.Marshal(s.jobs[jobID])
+		err = jobsBucket.Put([]byte(jobID), b)
+		if err != nil {
+			return fmt.Errorf("could not persist job to boltdb: %s", err)
 		}
 
 		// save the opaque blob the backend handed us as its state
@@ -165,7 +163,7 @@ func (s *State) AddJob(j *host.Job, ip string) {
 	job := &host.ActiveJob{Job: j, HostID: s.id, InternalIP: ip}
 	s.jobs[j.ID] = job
 	s.sendEvent(job, "create")
-	go s.persist()
+	go s.persist(j.ID)
 }
 
 func (s *State) GetJob(id string) *host.ActiveJob {
@@ -179,11 +177,11 @@ func (s *State) GetJob(id string) *host.ActiveJob {
 	return &jobCopy
 }
 
-func (s *State) RemoveJob(id string) {
+func (s *State) RemoveJob(jobID string) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
-	delete(s.jobs, id)
-	go s.persist()
+	delete(s.jobs, jobID)
+	go s.persist(jobID)
 }
 
 func (s *State) Get() map[string]host.ActiveJob {
@@ -212,14 +210,14 @@ func (s *State) SetContainerID(jobID, containerID string) {
 	defer s.mtx.Unlock()
 	s.jobs[jobID].ContainerID = containerID
 	s.containers[containerID] = s.jobs[jobID]
-	go s.persist()
+	go s.persist(jobID)
 }
 
 func (s *State) SetManifestID(jobID, manifestID string) {
 	s.mtx.Lock()
 	s.jobs[jobID].ManifestID = manifestID
 	s.mtx.Unlock()
-	go s.persist()
+	go s.persist(jobID)
 }
 
 func (s *State) SetForceStop(jobID string) {
@@ -232,7 +230,7 @@ func (s *State) SetForceStop(jobID string) {
 	}
 
 	job.ForceStop = true
-	go s.persist()
+	go s.persist(jobID)
 }
 
 func (s *State) SetStatusRunning(jobID string) {
@@ -247,7 +245,7 @@ func (s *State) SetStatusRunning(jobID string) {
 	job.StartedAt = time.Now().UTC()
 	job.Status = host.StatusRunning
 	s.sendEvent(job, "start")
-	go s.persist()
+	go s.persist(jobID)
 }
 
 func (s *State) SetContainerStatusDone(containerID string, exitCode int) {
@@ -283,7 +281,7 @@ func (s *State) setStatusDone(job *host.ActiveJob, exitStatus int) {
 		job.Status = host.StatusCrashed
 	}
 	s.sendEvent(job, "stop")
-	go s.persist()
+	go s.persist(job.Job.ID)
 }
 
 func (s *State) SetStatusFailed(jobID string, err error) {
@@ -299,7 +297,7 @@ func (s *State) SetStatusFailed(jobID string, err error) {
 	errStr := err.Error()
 	job.Error = &errStr
 	s.sendEvent(job, "error")
-	go s.persist()
+	go s.persist(jobID)
 	go s.WaitAttach(jobID)
 }
 
