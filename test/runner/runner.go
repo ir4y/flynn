@@ -262,7 +262,7 @@ func (r *Runner) build(b *Build) (err error) {
 		return fmt.Errorf("could not build flynn: %s", err)
 	}
 
-	if err := c.Boot(rootFS, 3); err != nil {
+	if err := c.Boot(rootFS, 3, out); err != nil {
 		return fmt.Errorf("could not boot cluster: %s", err)
 	}
 
@@ -607,13 +607,18 @@ func (r *Runner) httpClusterHandler(w http.ResponseWriter, req *http.Request) {
 
 	switch req.Method {
 	case "GET":
-		json.NewEncoder(w).Encode(c)
+		if err := json.NewEncoder(w).Encode(c); err != nil {
+			http.Error(w, fmt.Sprintf("error encoding cluster: %s", err), 500)
+		}
 	case "POST":
-		if err := c.AddHost(); err != nil {
+		instance, err := c.AddHost()
+		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		w.Write([]byte("ok"))
+		if err := json.NewEncoder(w).Encode(instance); err != nil {
+			http.Error(w, fmt.Sprintf("error encoding instance: %s", err), 500)
+		}
 	case "DELETE":
 		hostID := req.FormValue("host")
 		if err := c.RemoveHost(hostID); err != nil {
