@@ -858,10 +858,14 @@ func (l *LibvirtLXCBackend) Cleanup() error {
 	return err
 }
 
-func (l *LibvirtLXCBackend) RestoreState(jobs map[string]*host.ActiveJob, blob []byte) error {
+func (l *LibvirtLXCBackend) UnmarshalState(jobs map[string]*host.ActiveJob, jobBackendStates map[string][]byte, backendGlobalState []byte) error {
 	containers := make(map[string]*libvirtContainer)
-	if err := json.Unmarshal(blob, &containers); err != nil {
-		return err
+	for k, v := range jobBackendStates {
+		var container libvirtContainer
+		if err := json.Unmarshal(v, &container); err != nil {
+			return fmt.Errorf("failed to deserialize backed container state: %s", err)
+		}
+		containers[k] = &container
 	}
 	for _, j := range jobs {
 		container, ok := containers[j.Job.ID]
@@ -891,10 +895,14 @@ func (l *LibvirtLXCBackend) RestoreState(jobs map[string]*host.ActiveJob, blob [
 	return nil
 }
 
-func (l *LibvirtLXCBackend) Serialize() ([]byte, error) {
+func (l *LibvirtLXCBackend) MarshalJobState(jobID string) ([]byte, error) {
 	l.containersMtx.RLock()
 	defer l.containersMtx.RUnlock()
-	return json.Marshal(l.containers)
+	return json.Marshal(l.containers[jobID])
+}
+
+func (l *LibvirtLXCBackend) MarshalGlobalState() ([]byte, error) {
+	return make([]byte, 0), nil
 }
 
 func (l *LibvirtLXCBackend) pinkertonPull(url string) ([]pinkerton.LayerPullInfo, error) {

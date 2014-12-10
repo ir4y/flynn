@@ -28,13 +28,15 @@ func (S) TestStateHostID(c *C) {
 
 type MockBackend struct{}
 
-func (MockBackend) Run(*host.Job) error                                   { return nil }
-func (MockBackend) Stop(string) error                                     { return nil }
-func (MockBackend) Signal(string, int) error                              { return nil }
-func (MockBackend) ResizeTTY(id string, height, width uint16) error       { return nil }
-func (MockBackend) Attach(*AttachRequest) error                           { return nil }
-func (MockBackend) Cleanup() error                                        { return nil }
-func (MockBackend) RestoreState(map[string]*host.ActiveJob, []byte) error { return nil }
+func (MockBackend) Run(*host.Job) error                             { return nil }
+func (MockBackend) Stop(string) error                               { return nil }
+func (MockBackend) Signal(string, int) error                        { return nil }
+func (MockBackend) ResizeTTY(id string, height, width uint16) error { return nil }
+func (MockBackend) Attach(*AttachRequest) error                     { return nil }
+func (MockBackend) Cleanup() error                                  { return nil }
+func (MockBackend) UnmarshalState(map[string]*host.ActiveJob, map[string][]byte, []byte) error {
+	return nil
+}
 
 func (S) TestStatePersistRestore(c *C) {
 	workdir := c.MkDir()

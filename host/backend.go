@@ -27,9 +27,10 @@ type Backend interface {
 	ResizeTTY(id string, height, width uint16) error
 	Attach(*AttachRequest) error
 	Cleanup() error
-	RestoreState(map[string]*host.ActiveJob, []byte) error
+	UnmarshalState(map[string]*host.ActiveJob, map[string][]byte, []byte) error
 }
 
 type StateSaver interface {
-	Serialize() ([]byte, error)
+	MarshalJobState(jobID string) ([]byte, error)
+	MarshalGlobalState() ([]byte, error)
 }

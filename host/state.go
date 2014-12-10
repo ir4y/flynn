@@ -52,7 +52,8 @@ func (s *State) Restore(backend Backend) error {
 
 	if err := s.stateDB.View(func(tx *bolt.Tx) error {
 		jobsBucket := tx.Bucket([]byte("jobs"))
-		backendBucket := tx.Bucket([]byte("backend"))
+		backendJobsBucket := tx.Bucket([]byte("backend-jobs"))
+		backendGlobalBucket := tx.Bucket([]byte("backend-global"))
 
 		// restore jobs
 		if err := jobsBucket.ForEach(func(k, v []byte) error {
@@ -69,9 +70,16 @@ func (s *State) Restore(backend Backend) error {
 			return err
 		}
 
-		// hand opaque blob back to backend so it can do its restore
-		backendBlob := backendBucket.Get([]byte("backend"))
-		return backend.RestoreState(s.jobs, backendBlob)
+		// hand opaque blobs back to backend so it can do its restore
+		backendJobsBlobs := make(map[string][]byte)
+		if err := backendJobsBucket.ForEach(func(k, v []byte) error {
+			backendJobsBlobs[string(k)] = v
+			return nil
+		}); err != nil {
+			return err
+		}
+		backendGlobalBlob := backendGlobalBucket.Get([]byte("backend"))
+		return backend.UnmarshalState(s.jobs, backendJobsBlobs, backendGlobalBlob)
 	}); err != nil {
 		if err == io.EOF {
 			return nil
@@ -96,7 +104,8 @@ func (s *State) initializePersistence() {
 	if err := s.stateDB.Update(func(tx *bolt.Tx) error {
 		// idempotently create buckets.  (errors ignored because they're all compile-time impossible args checks.)
 		tx.CreateBucketIfNotExists([]byte("jobs"))
-		tx.CreateBucketIfNotExists([]byte("backend"))
+		tx.CreateBucketIfNotExists([]byte("backend-jobs"))
+		tx.CreateBucketIfNotExists([]byte("backend-global"))
 		return nil
 	}); err != nil {
 		panic(fmt.Errorf("could not initialize host persistence db: %s", err))
@@ -111,26 +120,44 @@ func (s *State) persist(jobID string) {
 
 	if err := s.stateDB.Update(func(tx *bolt.Tx) error {
 		jobsBucket := tx.Bucket([]byte("jobs"))
-		backendBucket := tx.Bucket([]byte("backend"))
+		backendJobsBucket := tx.Bucket([]byte("backend-jobs"))
+		backendGlobalBucket := tx.Bucket([]byte("backend-global"))
 
 		// serialize the changed job, and push it into jobs bucket
 		b, err := json.Marshal(s.jobs[jobID])
+		if err != nil {
+			return fmt.Errorf("failed to serialize job state: %s", err)
+		}
 		err = jobsBucket.Put([]byte(jobID), b)
 		if err != nil {
 			return fmt.Errorf("could not persist job to boltdb: %s", err)
 		}
 
-		// save the opaque blob the backend handed us as its state
-		if b, ok := s.backend.(StateSaver); ok {
-			if bytes, err := b.Serialize(); err != nil {
-				return fmt.Errorf("error serializing backend state: %s", err)
-			} else {
-				err := backendBucket.Put([]byte("backend"), bytes)
-				if err != nil {
-					return fmt.Errorf("could not persist backend state to boltdb: %s", err)
-				}
-			}
+		backend, ok := s.backend.(StateSaver)
+		if !ok {
+			return nil
 		}
+
+		// save the opaque blob the backend provides regarding this job
+		backendState, err := backend.MarshalJobState(jobID)
+		if err != nil {
+			return fmt.Errorf("backend failed to serialize job state: %s", err)
+		}
+		err = backendJobsBucket.Put([]byte(jobID), backendState)
+		if err != nil {
+			return fmt.Errorf("could not persist backend job state to boltdb: %s", err)
+		}
+
+		// (re)save any state the backend provides that isn't tied to specific jobs.
+		bytes, err := backend.MarshalGlobalState()
+		if err != nil {
+			return fmt.Errorf("backend failed to serialize global state: %s", err)
+		}
+		err = backendGlobalBucket.Put([]byte("backend"), bytes)
+		if err != nil {
+			return fmt.Errorf("could not persist backend global state to boltdb: %s", err)
+		}
+
 		return nil
 	}); err != nil {
 		panic(fmt.Errorf("could not persist to boltdb: %s", err))
