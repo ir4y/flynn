@@ -898,7 +898,11 @@ func (l *LibvirtLXCBackend) UnmarshalState(jobs map[string]*host.ActiveJob, jobB
 func (l *LibvirtLXCBackend) MarshalJobState(jobID string) ([]byte, error) {
 	l.containersMtx.RLock()
 	defer l.containersMtx.RUnlock()
-	return json.Marshal(l.containers[jobID])
+	if associatedState, exists := l.containers[jobID]; exists {
+		return json.Marshal(associatedState)
+	} else {
+		return nil, nil
+	}
 }
 
 func (l *LibvirtLXCBackend) MarshalGlobalState() ([]byte, error) {

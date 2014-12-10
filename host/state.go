@@ -149,9 +149,13 @@ func (s *State) persist(jobID string) {
 			if err != nil {
 				return fmt.Errorf("backend failed to serialize job state: %s", err)
 			}
-			err = backendJobsBucket.Put([]byte(jobID), backendState)
-			if err != nil {
-				return fmt.Errorf("could not persist backend job state to boltdb: %s", err)
+			if backendState == nil {
+				backendJobsBucket.Delete([]byte(jobID))
+			} else {
+				err = backendJobsBucket.Put([]byte(jobID), backendState)
+				if err != nil {
+					return fmt.Errorf("could not persist backend job state to boltdb: %s", err)
+				}
 			}
 		} else {
 			backendJobsBucket.Delete([]byte(jobID))
