@@ -24,7 +24,6 @@ type State struct {
 	listenMtx  sync.RWMutex
 	attachers  map[string]map[chan struct{}]struct{}
 
-	stateFileMtx      sync.Mutex
 	stateFilePath     string
 	stateDB           *bolt.DB
 	stateSaveListener chan struct{}
@@ -48,8 +47,6 @@ func NewState(id string, stateFilePath string) *State {
 	If the state save file is empty, nothing is loaded, and no error is returned.
 */
 func (s *State) Restore(backend Backend) error {
-	s.stateFileMtx.Lock()
-	defer s.stateFileMtx.Unlock()
 	s.backend = backend
 	s.initializePersistence()
 
@@ -107,8 +104,6 @@ func (s *State) initializePersistence() {
 }
 
 func (s *State) persist(jobID string) {
-	s.stateFileMtx.Lock()
-	defer s.stateFileMtx.Unlock()
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
 
@@ -152,8 +147,6 @@ func (s *State) persist(jobID string) {
 	but it is needed in testing so that bolt releases locks such that the file can be reopened.
 */
 func (s *State) persistenceDbClose() error {
-	s.stateFileMtx.Lock()
-	defer s.stateFileMtx.Unlock()
 	return s.stateDB.Close()
 }
 
