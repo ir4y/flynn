@@ -149,7 +149,7 @@ func (s *State) persist(jobID string) {
 /*
 	Close the DB that persists the host state.
 	This is not called in typical flow because there's no need to release this file descriptor,
-	but it is needed in testing so that bolt releases locks such that the  file can be reopened.
+	but it is needed in testing so that bolt releases locks such that the file can be reopened.
 */
 func (s *State) persistenceDbClose() error {
 	s.stateFileMtx.Lock()
