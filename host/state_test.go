@@ -18,6 +18,7 @@ func (S) TestStateHostID(c *C) {
 	workdir := c.MkDir()
 	hostID := "abc123"
 	state := NewState(hostID, filepath.Join(workdir, "host-state-db"))
+	defer state.persistenceDbClose()
 	state.AddJob(&host.Job{ID: "a"}, "1.1.1.1")
 	job := state.GetJob("a")
 	if job.HostID != hostID {
@@ -47,6 +48,7 @@ func (S) TestStatePersistRestore(c *C) {
 	// exercise the restore path.  failures will panic.
 	// note that this does not test backend deserialization (the mock, obviously, isn't doing anything).
 	state = NewState(hostID, filepath.Join(workdir, "host-state-db"))
+	defer state.persistenceDbClose()
 	state.Restore(&MockBackend{})
 
 	// check we actually got job data back
