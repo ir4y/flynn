@@ -26,7 +26,7 @@ type State struct {
 
 	stateFileMtx      sync.Mutex
 	stateFilePath     string
-	stateDb           *bolt.DB
+	stateDB           *bolt.DB
 	stateSaveListener chan struct{}
 
 	backend Backend
@@ -53,7 +53,7 @@ func (s *State) Restore(backend Backend) error {
 	s.backend = backend
 	s.initializePersistence()
 
-	if err := s.stateDb.View(func(tx *bolt.Tx) error {
+	if err := s.stateDB.View(func(tx *bolt.Tx) error {
 		jobsBucket := tx.Bucket([]byte("jobs"))
 		backendBucket := tx.Bucket([]byte("backend"))
 
@@ -86,17 +86,17 @@ func (s *State) Restore(backend Backend) error {
 }
 
 func (s *State) initializePersistence() {
-	if s.stateDb != nil {
+	if s.stateDB != nil {
 		return
 	}
 
 	// open/initialize db
-	stateDb, err := bolt.Open(s.stateFilePath, 0600, &bolt.Options{Timeout: 5 * time.Second})
+	stateDB, err := bolt.Open(s.stateFilePath, 0600, &bolt.Options{Timeout: 5 * time.Second})
 	if err != nil {
 		panic(fmt.Errorf("could not open db: %s", err))
 	}
-	s.stateDb = stateDb
-	if err := s.stateDb.Update(func(tx *bolt.Tx) error {
+	s.stateDB = stateDB
+	if err := s.stateDB.Update(func(tx *bolt.Tx) error {
 		// idempotently create buckets.  (errors ignored because they're all compile-time impossible args checks.)
 		tx.CreateBucketIfNotExists([]byte("jobs"))
 		tx.CreateBucketIfNotExists([]byte("backend"))
@@ -114,7 +114,7 @@ func (s *State) persist(jobID string) {
 
 	s.initializePersistence()
 
-	if err := s.stateDb.Update(func(tx *bolt.Tx) error {
+	if err := s.stateDB.Update(func(tx *bolt.Tx) error {
 		jobsBucket := tx.Bucket([]byte("jobs"))
 		backendBucket := tx.Bucket([]byte("backend"))
 
@@ -154,7 +154,7 @@ func (s *State) persist(jobID string) {
 func (s *State) persistenceDbClose() error {
 	s.stateFileMtx.Lock()
 	defer s.stateFileMtx.Unlock()
-	return s.stateDb.Close()
+	return s.stateDB.Close()
 }
 
 func (s *State) AddJob(j *host.Job, ip string) {
