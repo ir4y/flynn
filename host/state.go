@@ -124,13 +124,18 @@ func (s *State) persist(jobID string) {
 		backendGlobalBucket := tx.Bucket([]byte("backend-global"))
 
 		// serialize the changed job, and push it into jobs bucket
-		b, err := json.Marshal(s.jobs[jobID])
-		if err != nil {
-			return fmt.Errorf("failed to serialize job state: %s", err)
-		}
-		err = jobsBucket.Put([]byte(jobID), b)
-		if err != nil {
-			return fmt.Errorf("could not persist job to boltdb: %s", err)
+		if _, exists := s.jobs[jobID]; exists {
+			b, err := json.Marshal(s.jobs[jobID])
+			if err != nil {
+				return fmt.Errorf("failed to serialize job state: %s", err)
+			}
+			fmt.Printf(":::SAVING: %s\n", string(b))
+			err = jobsBucket.Put([]byte(jobID), b)
+			if err != nil {
+				return fmt.Errorf("could not persist job to boltdb: %s", err)
+			}
+		} else {
+			jobsBucket.Delete([]byte(jobID))
 		}
 
 		backend, ok := s.backend.(StateSaver)
@@ -139,13 +144,17 @@ func (s *State) persist(jobID string) {
 		}
 
 		// save the opaque blob the backend provides regarding this job
-		backendState, err := backend.MarshalJobState(jobID)
-		if err != nil {
-			return fmt.Errorf("backend failed to serialize job state: %s", err)
-		}
-		err = backendJobsBucket.Put([]byte(jobID), backendState)
-		if err != nil {
-			return fmt.Errorf("could not persist backend job state to boltdb: %s", err)
+		if _, exists := s.jobs[jobID]; exists {
+			backendState, err := backend.MarshalJobState(jobID)
+			if err != nil {
+				return fmt.Errorf("backend failed to serialize job state: %s", err)
+			}
+			err = backendJobsBucket.Put([]byte(jobID), backendState)
+			if err != nil {
+				return fmt.Errorf("could not persist backend job state to boltdb: %s", err)
+			}
+		} else {
+			backendJobsBucket.Delete([]byte(jobID))
 		}
 
 		// (re)save any state the backend provides that isn't tied to specific jobs.
